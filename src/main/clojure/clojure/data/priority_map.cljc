@@ -197,7 +197,9 @@ to Clojure's assortment of built-in maps (hash-map and sorted-map).
 "}
     clojure.data.priority-map
   (:refer-clojure :exclude [subseq rsubseq])
-  (:import clojure.lang.MapEntry java.util.Map clojure.lang.PersistentTreeMap))
+  (:import clojure.lang.MapEntry
+           #?(:clj java.util.Map)
+           clojure.lang.PersistentTreeMap))
 
 (declare pm-empty)
 
@@ -249,9 +251,12 @@ to Clojure's assortment of built-in maps (hash-map and sorted-map).
 ;; Priority maps can also have a keyfn which is applied to the "priorities" found as values in 
 ;; the item->priority map to get the actual sortable priority keys used in priority->set-of-items.
 
+(def ppm-log (atom :initial))
+
 (deftype PersistentPriorityMap [priority->set-of-items item->priority _meta keyfn]
   Object
-  (toString [this] (str (.seq this)))
+  #?(:clj (toString [this] (str (.seq this)))
+     :cljr (ToString [this] (str (.seq this))))
 
   clojure.lang.ILookup
   ;; valAt gives (get pm key) and (get pm key not-found) behavior
@@ -261,7 +266,13 @@ to Clojure's assortment of built-in maps (hash-map and sorted-map).
   clojure.lang.IPersistentMap
   (count [this] (count item->priority))
 
-  (assoc [this item priority]
+  #?(:cljr (clojure.lang.Associative.assoc [this item priority]
+             (let [^clojure.lang.IPersistentMap this this]
+               (.assoc this item priority))))
+
+  (#?(:clj assoc
+      :cljr clojure.lang.IPersistentMap.assoc) [this item priority]
+    ;;(arcadia.debug/break)
     (let [current-priority (get item->priority item nil)]
       (if current-priority
         ;;Case 1 - item is already in priority map, so this is a reassignment
@@ -302,16 +313,34 @@ to Clojure's assortment of built-in maps (hash-map and sorted-map).
   (empty [this] (PersistentPriorityMap. (empty priority->set-of-items) {} _meta keyfn))
 
   ;; cons defines conj behavior
-  (cons [this e] 
+  (#?(:clj cons
+      :cljr clojure.lang.IPersistentMap.cons) [this e] 
+    (if (map? e)
+      (into this e)
+      (let [[item priority] e] (.assoc this item priority))))
+
+  (#?(:clj cons
+      :cljr clojure.lang.IPersistentCollection.cons) [this e] 
     (if (map? e)
       (into this e)
       (let [[item priority] e] (.assoc this item priority))))
 
   ;; Like sorted maps, priority maps are equal to other maps provided
   ;; their key-value pairs are the same.
-  (equiv [this o] (= item->priority o))
-  (hashCode [this] (.hashCode item->priority))
-  (equals [this o] (or (identical? this o) (.equals item->priority o)))
+  (equiv [this o]
+    ;;(reset! ppm-log :hit-equiv)
+    ;;(arcadia.debug/break)
+    (= item->priority o))
+  (#?(:clj hashCode
+      :cljr GetHashCode) [this] (#?(:clj .hashCode
+                                    :cljr .GetHashCode) item->priority))
+  (#?(:clj equals
+      :cljr Equals) [this o]
+    ;; (arcadia.debug/break)
+    (reset! ppm-log :hit-equals)
+    (or (identical? this o)
+        (#?(:clj .equals
+            :cljr .Equals) item->priority o)))
 
   ;;containsKey implements (contains? pm k) behavior
   (containsKey [this item] (contains? item->priority item))
@@ -350,26 +379,37 @@ to Clojure's assortment of built-in maps (hash-map and sorted-map).
              (meta this)
              keyfn))))))
   
-  java.io.Serializable  ;Serialization comes for free with the other things implemented
+  ;;java.io.Serializable  ;Serialization comes for free with the other things implemented
   clojure.lang.MapEquivalence
-  Map ;Makes this compatible with java's map
-  (size [this] (count item->priority))
-  (isEmpty [this] (zero? (count item->priority)))
-  (containsValue [this v] 
-    (if keyfn
-      (some (partial = v) (vals this)) ; no shortcut if there is a keyfn
-      (contains? priority->set-of-items v)))
-  (get [this k] (.valAt this k))
-  (put [this k v] (throw (UnsupportedOperationException.)))
-  (remove [this k] (throw (UnsupportedOperationException.)))
-  (putAll [this m] (throw (UnsupportedOperationException.)))
-  (clear [this] (throw (UnsupportedOperationException.)))
-  (keySet [this] (set (keys this)))
-  (values [this] (vals this))
-  (entrySet [this] (set this))
   
-  Iterable
-  (iterator [this] (clojure.lang.SeqIterator. (seq this)))
+  #?(:clj Map)                       ;Makes this compatible with java's map
+  #?(:clj (size [this] (count item->priority)))
+  #?(:clj (isEmpty [this] (zero? (count item->priority))))
+  #?(:clj (containsValue [this v] 
+            (if keyfn
+              (some (partial = v) (vals this)) ; no shortcut if there is a keyfn
+              (contains? priority->set-of-items v))))
+  #?(:clj (get [this k] (.valAt this k)))
+  #?(:clj (put [this k v] (throw (UnsupportedOperationException.))))
+  #?(:clj (remove [this k] (throw (UnsupportedOperationException.))))
+  #?(:clj (putAll [this m] (throw (UnsupportedOperationException.))))
+  #?(:clj (clear [this] (throw (UnsupportedOperationException.))))
+  #?(:clj (keySet [this] (set (keys this))))
+  #?(:clj (values [this] (vals this)))
+  #?(:clj (entrySet [this] (set this)))
+
+  #?(:cljr System.Collections.IDictionary) ; partial implementation for now
+  #?(:cljr (System.Collections.ICollection.get_Count [this] (count this)))
+  #?(:cljr (System.Collections.IDictionary.get_Item [this k] (.valAt this k)))
+  #?(:cljr (System.Collections.IDictionary.Contains [this o]
+             (contains? this o)))
+  
+  #?(:clj Iterable)
+  #?(:clj (iterator [this] (clojure.lang.SeqIterator. (seq this))))
+
+  #?(:cljr System.Collections.IEnumerable)
+  #?(:cljr (System.Collections.IEnumerable.GetEnumerator [this]
+             (.GetEnumerator ^clojure.lang.ISeq (seq this))))
 
   clojure.core.protocols/IKVReduce
   (kv-reduce [this f init]
@@ -379,7 +419,8 @@ to Clojure's assortment of built-in maps (hash-map and sorted-map).
 
   clojure.lang.IPersistentStack
   (peek [this]
-    (when-not (.isEmpty this)
+    (when-not #?(:clj (.isEmpty this)
+                 :cljr (zero? (count this)))
       (let [f (first priority->set-of-items)
             item (first (val f))]
         (if keyfn
@@ -387,7 +428,9 @@ to Clojure's assortment of built-in maps (hash-map and sorted-map).
           (MapEntry. item (key f))))))
 
   (pop [this]
-    (if (.isEmpty this) (throw (IllegalStateException. "Can't pop empty priority map"))
+    (if #?(:clj (.isEmpty this)
+           :cljr (zero? (count this))) (throw (#?(:clj IllegalStateException.
+                                                  :cljr InvalidOperationException.) "Can't pop empty priority map"))
         (let [f (first priority->set-of-items),
               item-set (val f)
               item (first item-set),
@@ -395,16 +438,16 @@ to Clojure's assortment of built-in maps (hash-map and sorted-map).
           (if (= (count item-set) 1)
             ;;If the first item is the only item with its priority, remove that priority's set completely
             (PersistentPriorityMap.
-             (dissoc priority->set-of-items priority-key)
-             (dissoc item->priority item)
-             (meta this)
-             keyfn)
+              (dissoc priority->set-of-items priority-key)
+              (dissoc item->priority item)
+              (meta this)
+              keyfn)
             ;;Otherwise, just remove the item from the priority's set.
             (PersistentPriorityMap.
-             (assoc priority->set-of-items priority-key (disj item-set item)),
-             (dissoc item->priority item)
-             (meta this)
-             keyfn)))))
+              (assoc priority->set-of-items priority-key (disj item-set item)),
+              (dissoc item->priority item)
+              (meta this)
+              keyfn)))))
 
   clojure.lang.IFn
   ;;makes priority map usable as a function

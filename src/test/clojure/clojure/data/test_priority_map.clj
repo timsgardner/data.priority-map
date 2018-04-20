@@ -10,7 +10,7 @@
             p {:a 2 :b 1 :c 3 :d 5 :e 4 :f 3}
             h p
             (priority-map 1 2) (priority-map 1 2)
-            (.hashCode p) (.hashCode {:a 2 :b 1 :c 3 :d 5 :e 4 :f 3})
+            (.GetHashCode p) (.GetHashCode {:a 2 :b 1 :c 3 :d 5 :e 4 :f 3})
             (assoc p :g 1) (assoc h :g 1)
             (assoc p :g 0) (assoc h :g 0)
             (assoc p :c 4) (assoc h :c 4)
@@ -95,7 +95,7 @@
        (are [x y] (= x y)
             p h
             h p
-            (.hashCode p) (.hashCode h)
+            (.GetHashCode p) (.GetHashCode h)
             (assoc p :g [1 :g]) (assoc h :g [1 :g])
             (assoc p :g [0 :g]) (assoc h :g [0 :g])
             (assoc p :c [4 :c]) (assoc h :c [4 :c])
