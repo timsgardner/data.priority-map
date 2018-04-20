@@ -251,8 +251,6 @@ to Clojure's assortment of built-in maps (hash-map and sorted-map).
 ;; Priority maps can also have a keyfn which is applied to the "priorities" found as values in 
 ;; the item->priority map to get the actual sortable priority keys used in priority->set-of-items.
 
-(def ppm-log (atom :initial))
-
 (deftype PersistentPriorityMap [priority->set-of-items item->priority _meta keyfn]
   Object
   #?(:clj (toString [this] (str (.seq this)))
@@ -337,7 +335,6 @@ to Clojure's assortment of built-in maps (hash-map and sorted-map).
   (#?(:clj equals
       :cljr Equals) [this o]
     ;; (arcadia.debug/break)
-    (reset! ppm-log :hit-equals)
     (or (identical? this o)
         (#?(:clj .equals
             :cljr .Equals) item->priority o)))
